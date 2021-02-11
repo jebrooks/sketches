@@ -1,27 +1,31 @@
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
 #include <PubSubClient.h>
+#include <WIFIConfigurator.h>
+#include <EEPROM.h>
 
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
 
-/* Set these to your desired credentials. */
-const char* ssid = "N9I73";
-const char* wifipword = "1801523b3b";
-const char* mqttServer = "192.168.1.200";
-const int mqttPort = 1883;
-const char* mqttUser = "mqtt";
-const char* mqttPassword = "cutieserver";
-const char* mqttTopic = "sumpsensor";
-const int readInterval = 30000; //30s
-const int reportInterval = 300000; //5m
-const int minNormalDistance = 20; //if distance becomes smaller than this, report on every read
+char* mqttServer;
+int mqttPort;
+char* mqttUser;
+char* mqttPassword;
+char* mqttTopic;
+unsigned int readInterval = 3000;
+unsigned int reportInterval = 10000;
+int minNormalDistance;
 
 const int trigPin = 2;  //D4
 const int echoPin = 0;  //D3
 
 unsigned int lastRead = 0;
 unsigned int lastReported = 0;
+
+char configData[500];
+const String configLabels = "MQTT Server Host|MQTT Port|MQTT User|MQTT Password|MQTT Topic|Sensor Read Interval (ms)|Sensor Report Interval (ms)|Minimum Normal Distance (cm)";
+
+WIFIConfigurator configurator(configLabels);
 
 void connectMQTT() {
   if (!client.connected()) {
@@ -68,16 +72,48 @@ void setup() {
  delay(3000);
  Serial.begin(115200);
  Serial.println();
- WiFi.begin(ssid, wifipword);
- int i = 0;
- while (WiFi.status() != WL_CONNECTED && i < 40) {
-   delay(500);
-   Serial.print(".");
-   i++;
- } 
 
- Serial.print("IP address: ");
- Serial.println(WiFi.localIP());
+ configurator.begin();
+
+ EEPROM.begin(500);
+ EEPROM.get(0, configData);
+ Serial.print("size of data: ");
+ Serial.println(sizeof(configData));
+ Serial.println(configData);
+
+ while (true) {
+   char* ssid = strtok(configData, "|");
+   if (ssid == NULL) break;
+   Serial.println(ssid);
+   char* wifipassword = strtok(NULL, "|");
+   if (wifipassword == NULL) break;
+   Serial.println(wifipassword);
+   mqttServer = strtok(NULL, "|");
+   if (mqttServer == NULL) break;
+   Serial.println(mqttServer);
+   mqttPort = atoi(strtok(NULL, "|"));
+   if (mqttPort == NULL) break;
+   Serial.println(mqttPort);
+   mqttUser = strtok(NULL, "|");
+   if (mqttUser == NULL) break;
+   Serial.println(mqttUser);
+   mqttPassword = strtok(NULL, "|");
+   if (mqttPassword == NULL) break;
+   Serial.println(mqttPassword);
+   mqttTopic = strtok(NULL, "|");
+   if (mqttTopic == NULL) break;
+   Serial.println(mqttTopic);
+   readInterval = atoi(strtok(NULL, "|"));
+   if (readInterval == NULL) break;
+   Serial.println(readInterval);
+   reportInterval = atoi(strtok(NULL, "|"));
+   if (reportInterval == NULL) break;
+   Serial.println(reportInterval);
+   minNormalDistance = atoi(strtok(NULL, "|"));
+   Serial.println(minNormalDistance);
+   break;
+ }
+
  client.setServer(mqttServer, mqttPort);
  pinMode(trigPin, OUTPUT); // Sets the trigPin as an Output
  pinMode(echoPin, INPUT); // Sets the echoPin as an Input
@@ -85,8 +121,10 @@ void setup() {
 }
 
 void loop() {
-  int now = millis(); //note millis() will cycle back to zero every 50 days
+  unsigned int now = millis(); //note millis() will cycle back to zero every 50 days
 
+  configurator.handleClient();
+  
   if (now - lastRead > readInterval || now < lastRead) {
     int dist = getDistance();
     Serial.print("water level is ");
