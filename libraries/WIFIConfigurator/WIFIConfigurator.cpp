@@ -8,6 +8,7 @@
 
 ESP8266WebServer server(80);
 String _labels;
+char data[MAXDATASIZE];
 
 WIFIConfigurator::WIFIConfigurator(String labels)
 {
@@ -22,10 +23,12 @@ void WIFIConfigurator::sendWifiForm() {
   html.concat("<FORM ACTION='wifiaction' METHOD='POST'>");
   html.concat("<LABEL FOR='ssid'>SSID:</LABEL><INPUT TYPE='text' ID='ssid' NAME='ssid'><BR>");
   html.concat("<LABEL FOR='password'>Password:</LABEL><INPUT TYPE='password' ID='password' NAME='password'><BR>");
+  html.concat("<INPUT TYPE='submit' VALUE='Submit'></FORM>");
   server.send(200, "text/html", html);
 }
 
 void WIFIConfigurator::sendConfigForm() {
+  Serial.println("sendConfigForm()");
   String html = "<P>Configure device at MAC ";
   html.concat(WiFi.macAddress());
   html.concat("</P>");
@@ -35,7 +38,7 @@ void WIFIConfigurator::sendConfigForm() {
   html.concat("<P>Enter your device specific config.  Device will restart after submit.</P>");
   html.concat("<FORM ACTION='configaction' METHOD='POST'>");
   char* label;
-  label = strtok(labelArr, ",");
+  label = strtok(labelArr, "|");
   int i=0;
   while (label != NULL) {
     html.concat("<LABEL FOR='field");
@@ -47,14 +50,32 @@ void WIFIConfigurator::sendConfigForm() {
     html.concat("' NAME='field");
     html.concat(i);
     html.concat("'><BR>");
-    label = strtok(NULL, ",");
+    label = strtok(NULL, "|");
     i++;
   }
   html.concat("<INPUT TYPE='submit' VALUE='Submit'></FORM>");
+  EEPROM.begin(MAXDATASIZE);
+  EEPROM.get(0, data);
+  char* value = strtok(data, "|"); //ssid
+  value = strtok(NULL, "|"); //pword
+  html.concat("<script>");
+  value = strtok(NULL, "|"); //first config value
+  i=0;
+  while (value != NULL) {
+    html.concat("document.getElementById('field");
+    html.concat(i);
+    html.concat("').value='");
+    html.concat(value);
+    html.concat("';");
+    value = strtok(NULL,"|");
+    i++;
+  }
+  html.concat("</script>");
   server.send(200, "text/html", html);
 }
 
 void WIFIConfigurator::handleRoot() {
+  Serial.println("handleRoot()");
   if (WiFi.status() != WL_CONNECTED) {
     sendWifiForm();
   } else {
@@ -67,7 +88,6 @@ void WIFIConfigurator::handleWifiSetup() {
   //write wifi info to eeprom and restart
   Serial.print("configured data size is: ");
   Serial.println(MAXDATASIZE);
-  char data[MAXDATASIZE];
   String ssidStr = server.arg("ssid");
   String passwordStr = server.arg("password");
   int strLen = ssidStr.length() + 1;
@@ -82,6 +102,7 @@ void WIFIConfigurator::handleWifiSetup() {
   strcpy(data, newSsid);
   strcat(data, "|");
   strcat(data, newPassword);
+  strcat(data, "|");
 
   Serial.println("writing: ");
   Serial.println(data);
@@ -90,14 +111,14 @@ void WIFIConfigurator::handleWifiSetup() {
   delay(2000);
   EEPROM.put(0,data);
   EEPROM.commit();
-  server.send(200, "text/html", "Attempting to connect...");
+  server.send(200, "text/html", "Restarting...");
+  delay(1000);
   ESP.restart();
 }
 
 void WIFIConfigurator::handleConfigChange() {
 
   Serial.println("handleConfigChange()");
-  char data[MAXDATASIZE];
   char newData[MAXDATASIZE];
   EEPROM.begin(MAXDATASIZE);
   EEPROM.get(0, data);
@@ -111,8 +132,8 @@ void WIFIConfigurator::handleConfigChange() {
   Serial.print("writing password ");
   Serial.println(mypassword);
   strcat(newData, mypassword);
+  strcat(newData, "|");
   for (int i=0; i < server.args() - 1; i++) { //last arg is the full querystring
-    strcat(newData, "|");
     String valStr = server.arg(i);
     int strLen = valStr.length() + 1;
     char val[strLen];
@@ -122,10 +143,12 @@ void WIFIConfigurator::handleConfigChange() {
     Serial.print(" ");
     Serial.println(val);
     strcat(newData, val);
+    strcat(newData, "|");
   }
   EEPROM.put(0,newData);
   EEPROM.commit();
   server.send(200, "text/html", "Restarting...");
+  delay(1000);
   ESP.restart();
 }
 

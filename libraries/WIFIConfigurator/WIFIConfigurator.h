@@ -1,5 +1,5 @@
-#ifndef MyClass
-#define MyClass
+#ifndef WIFIConfigurator_H 
+#define WIFIConfigurator_H
 
 #include <ESP8266WebServer.h>
 
