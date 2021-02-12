@@ -195,13 +195,15 @@ void WIFIConfigurator::begin() {
   char* myhostname = strtok(NULL, "|");
   bool configReady = myssid != NULL && mypassword != NULL && myhostname != NULL;
 
+  Serial.print("MAC: ");
+  Serial.println(WiFi.macAddress());
   if (configReady) {
     Serial.print("connecting to ");
     Serial.println(myssid);
     WiFi.hostname(myhostname);
     WiFi.begin(myssid, mypassword);
     int i = 0;
-    while (WiFi.status() != WL_CONNECTED && i < 20) {
+    while (WiFi.status() != WL_CONNECTED && i < 25) {
       delay(500);
       Serial.print(".");
       i++;
