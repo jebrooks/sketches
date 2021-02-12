@@ -2,13 +2,17 @@
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
 #include <ESP8266WebServer.h>
+#include <DNSServer.h>
 #include <EEPROM.h>
 #include <WIFIConfigurator.h>
 #define MAXDATASIZE 500
+#define DNS_PORT 53
 
+DNSServer dnsServer; 
 ESP8266WebServer server(80);
 String _labels;
 char data[MAXDATASIZE];
+IPAddress apIP(192,168,4,1);
 
 WIFIConfigurator::WIFIConfigurator(String labels)
 {
@@ -21,8 +25,9 @@ void WIFIConfigurator::sendWifiForm() {
   html.concat("</P>");
   html.concat("<P>Enter your SSID & PASSWORD.  After submit, device will restart and attempt to join.</P><P>If it can join, you can continue configuration at that network (you will need to join it) at http://[ip assigned to device].</P><P>Otherwise the device will start up its own WiFi AP again and you can retry SSID/PASSWORD entry.</P>");
   html.concat("<FORM ACTION='wifiaction' METHOD='POST'>");
-  html.concat("<LABEL FOR='ssid'>SSID:</LABEL><INPUT TYPE='text' ID='ssid' NAME='ssid'><BR>");
-  html.concat("<LABEL FOR='password'>Password:</LABEL><INPUT TYPE='password' ID='password' NAME='password'><BR>");
+  html.concat("<LABEL FOR='ssid'>SSID: </LABEL><INPUT TYPE='text' ID='ssid' NAME='ssid'><BR>");
+  html.concat("<LABEL FOR='password'>Password: </LABEL><INPUT TYPE='password' ID='password' NAME='password'><BR>");
+  html.concat("<LABEL FOR='hostname'>Hostname: </LABEL><INPUT TYPE='text' ID='hostname' NAME='hostname'><BR>");
   html.concat("<INPUT TYPE='submit' VALUE='Submit'></FORM>");
   server.send(200, "text/html", html);
 }
@@ -58,6 +63,7 @@ void WIFIConfigurator::sendConfigForm() {
   EEPROM.get(0, data);
   char* value = strtok(data, "|"); //ssid
   value = strtok(NULL, "|"); //pword
+  value = strtok(NULL, "|"); //hostname
   html.concat("<script>");
   value = strtok(NULL, "|"); //first config value
   i=0;
@@ -90,18 +96,24 @@ void WIFIConfigurator::handleWifiSetup() {
   Serial.println(MAXDATASIZE);
   String ssidStr = server.arg("ssid");
   String passwordStr = server.arg("password");
+  String hostnameStr = server.arg("hostname");
   int strLen = ssidStr.length() + 1;
   char newSsid[strLen];
   ssidStr.toCharArray(newSsid, strLen);
   strLen = passwordStr.length() + 1;
   char newPassword[strLen];
   passwordStr.toCharArray(newPassword, strLen);
+  strLen = hostnameStr.length() + 1;
+  char newHostname[strLen];
+  hostnameStr.toCharArray(newHostname, strLen);
   
   Serial.println("received connection info for SSID ");
   Serial.println(newSsid);
   strcpy(data, newSsid);
   strcat(data, "|");
   strcat(data, newPassword);
+  strcat(data, "|");
+  strcat(data, newHostname);
   strcat(data, "|");
 
   Serial.println("writing: ");
@@ -124,14 +136,14 @@ void WIFIConfigurator::handleConfigChange() {
   EEPROM.get(0, data);
   char* myssid = strtok(data, "|");
   char* mypassword = strtok(NULL, "|");
+  char* myhostname = strtok(NULL, "|");
   
   Serial.print("writing ssid ");
-  Serial.println(myssid);
   strcpy(newData, myssid);
   strcat(newData, "|");
-  Serial.print("writing password ");
-  Serial.println(mypassword);
   strcat(newData, mypassword);
+  strcat(newData, "|");
+  strcat(newData, myhostname);
   strcat(newData, "|");
   for (int i=0; i < server.args() - 1; i++) { //last arg is the full querystring
     String valStr = server.arg(i);
@@ -152,7 +164,6 @@ void WIFIConfigurator::handleConfigChange() {
   ESP.restart();
 }
 
-
 void WIFIConfigurator::startAP() {
   Serial.println("Configuring access point...");
   String macAddrStr = WiFi.macAddress();
@@ -164,12 +175,13 @@ void WIFIConfigurator::startAP() {
   strcat(apName, strtok(macAddr, ":"));
   strcat(apName, strtok(NULL, ":"));
   //AP SSID will be configurme-<first 4 letters of MAC addr>
+  WiFi.mode(WIFI_AP);
+  WiFi.softAPConfig(apIP,apIP,IPAddress(255,255,255,0));
   WiFi.softAP(apName);
-  IPAddress myIP = WiFi.softAPIP();
+  dnsServer.start(DNS_PORT,"*",apIP); //force browser to config page
   Serial.print("AP SSID: ");
   Serial.println(apName);
-  Serial.print("AP IP address: "); //should be 192.168.4.1
-  Serial.println(myIP);  
+  Serial.println("AP IP address: 192.168.4.1"); 
 }
 
 void WIFIConfigurator::begin() {
@@ -180,11 +192,13 @@ void WIFIConfigurator::begin() {
 
   char* myssid = strtok(configData, "|");
   char* mypassword = strtok(NULL, "|");
-  bool configReady = myssid != NULL && mypassword != NULL;
+  char* myhostname = strtok(NULL, "|");
+  bool configReady = myssid != NULL && mypassword != NULL && myhostname != NULL;
 
   if (configReady) {
     Serial.print("connecting to ");
     Serial.println(myssid);
+    WiFi.hostname(myhostname);
     WiFi.begin(myssid, mypassword);
     int i = 0;
     while (WiFi.status() != WL_CONNECTED && i < 20) {
@@ -211,10 +225,14 @@ void WIFIConfigurator::begin() {
   server.on("/wifi", [&](){ sendWifiForm(); } );
   server.on("/wifiaction", [&](){ handleWifiSetup(); } );
   server.on("/configaction", [&](){ handleConfigChange(); } );
+  server.onNotFound( [&]() { handleRoot(); } );
   server.begin();
   Serial.println("HTTP server started");
 }
 
 void WIFIConfigurator::handleClient() {
+  if (WiFi.status() != WL_CONNECTED) {
+    dnsServer.processNextRequest();
+  }
   server.handleClient();
 }
