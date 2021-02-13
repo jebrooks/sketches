@@ -18,7 +18,7 @@ class WIFIConfigurator
     void handleRoot();
     void sendWifiForm();
     void sendConfigForm();
-    void handleWifiSetup();
+    void handleWifiChange();
     void handleConfigChange();
 };
 

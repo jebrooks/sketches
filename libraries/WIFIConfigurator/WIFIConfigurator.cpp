@@ -34,9 +34,13 @@ void WIFIConfigurator::sendWifiForm() {
 
 void WIFIConfigurator::sendConfigForm() {
   Serial.println("sendConfigForm()");
-  String html = "<P>Configure device at MAC ";
+  String html = "<P>Configure Device</P>MAC: ";
   html.concat(WiFi.macAddress());
-  html.concat("</P>");
+  html.concat("<BR>Hostname: ");
+  html.concat(WiFi.hostname());
+  html.concat("<BR>");
+
+  //build the html form based on the supplied field labels
   int strLen = _labels.length() + 1;
   char labelArr[strLen];
   _labels.toCharArray(labelArr, strLen);
@@ -59,6 +63,8 @@ void WIFIConfigurator::sendConfigForm() {
     i++;
   }
   html.concat("<INPUT TYPE='submit' VALUE='Submit'></FORM>");
+
+  //load the current config values from EEPROM and set the form field values with html script
   EEPROM.begin(MAXDATASIZE);
   EEPROM.get(0, data);
   char* value = strtok(data, "|"); //ssid
@@ -89,11 +95,12 @@ void WIFIConfigurator::handleRoot() {
   }
 }
 
-void WIFIConfigurator::handleWifiSetup() {
-  Serial.println("handleWifiSetup()");
+void WIFIConfigurator::handleWifiChange() {
+  Serial.println("handleWifiChange()");
+
+  char newData[MAXDATASIZE];
+ 
   //write wifi info to eeprom and restart
-  Serial.print("configured data size is: ");
-  Serial.println(MAXDATASIZE);
   String ssidStr = server.arg("ssid");
   String passwordStr = server.arg("password");
   String hostnameStr = server.arg("hostname");
@@ -107,21 +114,35 @@ void WIFIConfigurator::handleWifiSetup() {
   char newHostname[strLen];
   hostnameStr.toCharArray(newHostname, strLen);
   
+  //put new wifi info into data
   Serial.println("received connection info for SSID ");
   Serial.println(newSsid);
-  strcpy(data, newSsid);
-  strcat(data, "|");
-  strcat(data, newPassword);
-  strcat(data, "|");
-  strcat(data, newHostname);
-  strcat(data, "|");
+  strcpy(newData, newSsid);
+  strcat(newData, "|");
+  strcat(newData, newPassword);
+  strcat(newData, "|");
+  strcat(newData, newHostname);
+  strcat(newData, "|");
 
-  Serial.println("writing: ");
-  Serial.println(data);
-  Serial.println("write data of length ");
-  Serial.println(sizeof(data));
-  delay(2000);
-  EEPROM.put(0,data);
+  memset(data,0,MAXDATASIZE);
+  EEPROM.begin(MAXDATASIZE);
+  EEPROM.get(0, data);
+  char* value = strtok(data, "|"); //old ssid
+  value = strtok(NULL, "|"); //old pword
+  value = strtok(NULL, "|"); //old hostname
+  value = strtok(NULL, "|"); //first config val
+ 
+  //put current config into data 
+  while (value != NULL) {
+    Serial.print("adding ");
+    Serial.println(value);
+    strcat(newData, value);
+    strcat(newData, "|");
+    value = strtok(NULL, "|");
+  }
+
+  //write data to eeprom - will only be changes to wifi info
+  EEPROM.put(0,newData);
   EEPROM.commit();
   server.send(200, "text/html", "Restarting...");
   delay(1000);
@@ -132,13 +153,13 @@ void WIFIConfigurator::handleConfigChange() {
 
   Serial.println("handleConfigChange()");
   char newData[MAXDATASIZE];
+  memset(data,0,MAXDATASIZE);
   EEPROM.begin(MAXDATASIZE);
   EEPROM.get(0, data);
   char* myssid = strtok(data, "|");
   char* mypassword = strtok(NULL, "|");
   char* myhostname = strtok(NULL, "|");
   
-  Serial.print("writing ssid ");
   strcpy(newData, myssid);
   strcat(newData, "|");
   strcat(newData, mypassword);
@@ -157,6 +178,8 @@ void WIFIConfigurator::handleConfigChange() {
     strcat(newData, val);
     strcat(newData, "|");
   }
+  Serial.println("writing:");
+  Serial.println(newData);
   EEPROM.put(0,newData);
   EEPROM.commit();
   server.send(200, "text/html", "Restarting...");
@@ -186,15 +209,14 @@ void WIFIConfigurator::startAP() {
 
 void WIFIConfigurator::begin() {
   
-  char configData[MAXDATASIZE];
+  char myData[MAXDATASIZE];
   EEPROM.begin(MAXDATASIZE);
-  EEPROM.get(0, configData);
-
-  char* myssid = strtok(configData, "|");
+  EEPROM.get(0, myData);
+  Serial.println(myData);
+  char* myssid = strtok(myData, "|");
   char* mypassword = strtok(NULL, "|");
   char* myhostname = strtok(NULL, "|");
   bool configReady = myssid != NULL && mypassword != NULL && myhostname != NULL;
-
   Serial.print("MAC: ");
   Serial.println(WiFi.macAddress());
   if (configReady) {
@@ -203,7 +225,7 @@ void WIFIConfigurator::begin() {
     WiFi.hostname(myhostname);
     WiFi.begin(myssid, mypassword);
     int i = 0;
-    while (WiFi.status() != WL_CONNECTED && i < 25) {
+    while (WiFi.status() != WL_CONNECTED && i < 60) {
       delay(500);
       Serial.print(".");
       i++;
@@ -225,7 +247,7 @@ void WIFIConfigurator::begin() {
   
   server.on("/", [&](){ handleRoot(); });
   server.on("/wifi", [&](){ sendWifiForm(); } );
-  server.on("/wifiaction", [&](){ handleWifiSetup(); } );
+  server.on("/wifiaction", [&](){ handleWifiChange(); } );
   server.on("/configaction", [&](){ handleConfigChange(); } );
   server.onNotFound( [&]() { handleRoot(); } );
   server.begin();
