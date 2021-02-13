@@ -88,6 +88,9 @@ void setup() {
    char* wifipassword = strtok(NULL, "|");
    if (wifipassword == NULL) break;
    Serial.println(wifipassword);
+   char* hostname = strtok(NULL, "|");
+   if (hostname == NULL) break;
+   Serial.println(hostname);
    mqttServer = strtok(NULL, "|");
    if (mqttServer == NULL) break;
    Serial.println(mqttServer);
@@ -117,7 +120,7 @@ void setup() {
  client.setServer(mqttServer, mqttPort);
  pinMode(trigPin, OUTPUT); // Sets the trigPin as an Output
  pinMode(echoPin, INPUT); // Sets the echoPin as an Input
- 
+ publish("999");
 }
 
 void loop() {
@@ -125,7 +128,7 @@ void loop() {
 
   configurator.handleClient();
   
-  if (now - lastRead > readInterval || now < lastRead) {
+  if (now - lastRead > readInterval || now < lastRead || lastRead == 0) {
     int dist = getDistance();
     Serial.print("water level is ");
     Serial.print(dist);
@@ -133,7 +136,7 @@ void loop() {
     lastRead = now;
 
     //report less frequently than we read, unless distance is below threshold
-    if (dist < minNormalDistance || now - lastReported > reportInterval || now < lastReported) {
+    if (dist < minNormalDistance || now - lastReported > reportInterval || now < lastReported || lastReported == 0) {
       char distChar[5];
       String distStr = String(dist);
       distStr.toCharArray(distChar,5);
