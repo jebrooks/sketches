@@ -198,7 +198,6 @@ void WIFIConfigurator::startAP() {
   strcat(apName, strtok(macAddr, ":"));
   strcat(apName, strtok(NULL, ":"));
   //AP SSID will be configurme-<first 4 letters of MAC addr>
-  WiFi.mode(WIFI_AP);
   WiFi.softAPConfig(apIP,apIP,IPAddress(255,255,255,0));
   WiFi.softAP(apName);
   dnsServer.start(DNS_PORT,"*",apIP); //force browser to config page
@@ -222,6 +221,7 @@ void WIFIConfigurator::begin() {
   if (configReady) {
     Serial.print("connecting to ");
     Serial.println(myssid);
+    WiFi.softAPdisconnect(true);
     WiFi.hostname(myhostname);
     WiFi.begin(myssid, mypassword);
     int i = 0;
