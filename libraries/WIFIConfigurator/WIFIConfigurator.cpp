@@ -20,15 +20,22 @@ WIFIConfigurator::WIFIConfigurator(String labels)
 }
 
 void WIFIConfigurator::sendWifiForm() {
-  String html = "<P>Configure device at MAC ";
+  EEPROM.begin(MAXDATASIZE);
+  EEPROM.get(0, data);
+  char* ssid = strtok(data, "|");
+  char* pword = strtok(NULL, "|");
+  char* hostname = strtok(NULL, "|");
+  String html = "<HTML><BODY><P>Configure device at MAC ";
   html.concat(WiFi.macAddress());
   html.concat("</P>");
   html.concat("<P>Enter your SSID & PASSWORD.  After submit, device will restart and attempt to join.</P><P>If it can join, you can continue configuration at that network (you will need to join it) at http://[ip assigned to device].</P><P>Otherwise the device will start up its own WiFi AP again and you can retry SSID/PASSWORD entry.</P>");
   html.concat("<FORM ACTION='wifiaction' METHOD='POST'>");
-  html.concat("<LABEL FOR='ssid'>SSID: </LABEL><INPUT TYPE='text' ID='ssid' NAME='ssid'><BR>");
-  html.concat("<LABEL FOR='password'>Password: </LABEL><INPUT TYPE='password' ID='password' NAME='password'><BR>");
-  html.concat("<LABEL FOR='hostname'>Hostname: </LABEL><INPUT TYPE='text' ID='hostname' NAME='hostname'><BR>");
-  html.concat("<INPUT TYPE='submit' VALUE='Submit'></FORM>");
+  html.concat("<LABEL FOR='ssid'>SSID: </LABEL><INPUT TYPE='text' ID='ssid' NAME='ssid' VALUE='");
+  html.concat(ssid == NULL ? "" : ssid);
+  html.concat("'><BR><LABEL FOR='password'>Password: </LABEL><INPUT TYPE='password' ID='password' NAME='password'><BR>");
+  html.concat("<LABEL FOR='hostname'>Hostname: </LABEL><INPUT TYPE='text' ID='hostname' NAME='hostname' VALUE='");
+  html.concat(hostname == NULL ? "" : hostname);
+  html.concat("'><BR><INPUT TYPE='submit' VALUE='Submit'></FORM></BODY></HTML>");
   server.send(200, "text/html", html);
 }
 
@@ -44,7 +51,7 @@ void WIFIConfigurator::sendConfigForm() {
   int strLen = _labels.length() + 1;
   char labelArr[strLen];
   _labels.toCharArray(labelArr, strLen);
-  html.concat("<P>Enter your device specific config.  Device will restart after submit.</P>");
+  html.concat("<HTML><BODY><P>Enter your device specific config.  Device will restart after submit.</P>");
   html.concat("<FORM ACTION='configaction' METHOD='POST'>");
   char* label;
   label = strtok(labelArr, "|");
@@ -82,7 +89,7 @@ void WIFIConfigurator::sendConfigForm() {
     value = strtok(NULL,"|");
     i++;
   }
-  html.concat("</script>");
+  html.concat("</script></BODY></HTML>");
   server.send(200, "text/html", html);
 }
 
@@ -117,7 +124,8 @@ void WIFIConfigurator::handleWifiChange() {
   //put new wifi info into data
   Serial.println("received connection info for SSID ");
   Serial.println(newSsid);
-  strcpy(newData, newSsid);
+  strcpy(newData,"|");
+  strcat(newData, newSsid);
   strcat(newData, "|");
   strcat(newData, newPassword);
   strcat(newData, "|");
@@ -134,8 +142,6 @@ void WIFIConfigurator::handleWifiChange() {
  
   //put current config into data 
   while (value != NULL) {
-    Serial.print("adding ");
-    Serial.println(value);
     strcat(newData, value);
     strcat(newData, "|");
     value = strtok(NULL, "|");
@@ -160,7 +166,8 @@ void WIFIConfigurator::handleConfigChange() {
   char* mypassword = strtok(NULL, "|");
   char* myhostname = strtok(NULL, "|");
   
-  strcpy(newData, myssid);
+  strcpy(newData, "|");
+  strcat(newData, myssid);
   strcat(newData, "|");
   strcat(newData, mypassword);
   strcat(newData, "|");
@@ -171,15 +178,11 @@ void WIFIConfigurator::handleConfigChange() {
     int strLen = valStr.length() + 1;
     char val[strLen];
     valStr.toCharArray(val,strLen);
-    Serial.print("writing field");
-    Serial.print(i);
-    Serial.print(" ");
-    Serial.println(val);
     strcat(newData, val);
     strcat(newData, "|");
   }
-  Serial.println("writing:");
-  Serial.println(newData);
+  //Serial.println("writing:");
+  //Serial.println(newData);
   EEPROM.put(0,newData);
   EEPROM.commit();
   server.send(200, "text/html", "Restarting...");
@@ -191,6 +194,7 @@ void WIFIConfigurator::startAP() {
   Serial.println("Configuring access point...");
   String macAddrStr = WiFi.macAddress();
   int strLen = macAddrStr.length() + 1;
+  IPAddress apIP(192,168,4,1);
   char macAddr[strLen];
   macAddrStr.toCharArray(macAddr, strLen);
   char apName[17];
@@ -211,7 +215,6 @@ void WIFIConfigurator::begin() {
   char myData[MAXDATASIZE];
   EEPROM.begin(MAXDATASIZE);
   EEPROM.get(0, myData);
-  Serial.println(myData);
   char* myssid = strtok(myData, "|");
   char* mypassword = strtok(NULL, "|");
   char* myhostname = strtok(NULL, "|");
@@ -237,13 +240,14 @@ void WIFIConfigurator::begin() {
       configReady = false;
     } else {
       Serial.println("connected.");
+      Serial.print("local IP: ");
       Serial.println(WiFi.localIP());
     }
   }
 
   if (! configReady) {
     startAP();
-  } 
+  }
   
   server.on("/", [&](){ handleRoot(); });
   server.on("/wifi", [&](){ sendWifiForm(); } );
