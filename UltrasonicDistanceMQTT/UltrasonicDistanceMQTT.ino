@@ -120,7 +120,6 @@ void setup() {
  client.setServer(mqttServer, mqttPort);
  pinMode(trigPin, OUTPUT); // Sets the trigPin as an Output
  pinMode(echoPin, INPUT); // Sets the echoPin as an Input
- publish("999");
 }
 
 void loop() {
