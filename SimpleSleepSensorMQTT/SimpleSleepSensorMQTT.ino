@@ -26,7 +26,6 @@ WIFIConfigurator configurator(configLabels);
 
 void connectMQTT() {
   if (!client.connected()) {
-    Serial.println(WiFi.status() == WL_CONNECTED);
     Serial.println("Connecting to MQTT...");
     if (client.connect("sumpsensor", mqttUser, mqttPassword )) {
       Serial.println("connected to MQTT server");
@@ -45,12 +44,12 @@ void publish(char* payload) {
 
 void setup() {
  
+ delay(3000);
  Serial.begin(115200);
  
  EEPROM.begin(500);
  EEPROM.get(0, configData);
  
- delay(3000);
  Serial.println();
  configurator.begin();
  while (true) {
