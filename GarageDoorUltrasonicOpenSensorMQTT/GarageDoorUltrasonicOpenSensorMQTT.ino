@@ -19,6 +19,7 @@ const int trigPin = 2;  //D4
 const int echoPin = 0;  //D3
 const int relayPin = 4; //D2
 
+unsigned long now = 0;
 unsigned long lastChecked = 0;
 bool isOpen = false;
 bool configReady = false;
@@ -30,12 +31,14 @@ WIFIConfigurator configurator(configLabels);
 char configData[500];
 
 void connectMQTT() {
-  Serial.println("Connecting to MQTT...");
-  if (client.connect("garagedooropener", mqttUser, mqttPassword )) {
-    Serial.println("connected to MQTT server");
-  } else {
-    Serial.print("failed with state ");
-    Serial.println(client.state());
+  if (! client.connected()) {
+    Serial.println("Connecting to MQTT...");
+    if (client.connect("garagedooropener", mqttUser, mqttPassword )) {
+      Serial.println("connected to MQTT server");
+    } else {
+      Serial.print("failed with state ");
+      Serial.println(client.state());
+    }
   }
 }
 
@@ -54,13 +57,21 @@ int getDistance() {
   duration = pulseIn(echoPin, HIGH);
 
   // Calculating the distance
-  distance= duration*0.034/2;
+  distance = duration*0.034/2;
   return distance;
 }
 
 void publish(char* payload) {
+  publish(mqttStateTopic, payload);
+}
+
+void publish(char* topic, char* payload) {
   connectMQTT();
-  client.publish(mqttStateTopic, payload);
+  Serial.print("publish ");
+  Serial.print(topic);
+  Serial.print(" ");
+  Serial.println(payload);
+  client.publish(topic, payload);
 }
 
 void handleCommand(char* topic, byte* payload, unsigned int length) {
@@ -162,7 +173,7 @@ void loop() {
 
   configurator.handleClient();
  
-  unsigned long now = millis();
+  now = millis();
 
   if (configReady) {
     client.loop(); //required to push msgs to handleCommand() callback
@@ -171,6 +182,10 @@ void loop() {
       Serial.println("regular check of door state...");
       bool lastState = isOpen;
       checkDoor(false);
+      char rssiChar[5];
+      String rssiStr = String(WiFi.RSSI());
+      rssiStr.toCharArray(rssiChar,5);
+      publish("rssi/garage2",rssiChar);
       //client.subscribe(mqttButtonTopic);
       if (isOpen != lastState) {
         Serial.println("door changed state, probably because of manual button press");
