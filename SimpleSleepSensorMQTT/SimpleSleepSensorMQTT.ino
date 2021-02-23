@@ -28,8 +28,6 @@ void connectMQTT() {
   if (!client.connected()) {
     Serial.println(WiFi.status() == WL_CONNECTED);
     Serial.println("Connecting to MQTT...");
-    Serial.println(mqttUser);
-    Serial.println(mqttPassword);
     if (client.connect("sumpsensor", mqttUser, mqttPassword )) {
       Serial.println("connected to MQTT server");
     } else {
@@ -54,13 +52,9 @@ void setup() {
  
  delay(3000);
  Serial.println();
- Serial.println("1");
  configurator.begin();
- Serial.println("2");
  while (true) {
-   Serial.println("3");
    char* ssid = strtok(configData, "|");
-   Serial.println(ssid);
    if (ssid == NULL) break;
    char* wifipassword = strtok(NULL, "|");
    if (wifipassword == NULL) break;
