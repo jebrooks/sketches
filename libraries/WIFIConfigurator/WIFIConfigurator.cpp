@@ -5,13 +5,12 @@
 #include <DNSServer.h>
 #include <EEPROM.h>
 #include <WIFIConfigurator.h>
-#define MAXDATASIZE 500
+#define MAXDATASIZE 300
 #define DNS_PORT 53
 
 DNSServer dnsServer; 
 ESP8266WebServer server(80);
 String _labels;
-char data[MAXDATASIZE];
 IPAddress apIP(192,168,4,1);
 
 WIFIConfigurator::WIFIConfigurator(String labels)
@@ -24,7 +23,13 @@ void WIFIConfigurator::sendConfigForm() {
   String html = "<P>Configure Device</P>MAC: ";
   html.concat(WiFi.macAddress());
   html.concat("<BR>");
-
+  if (WiFi.status() == WL_CONNECTED) {
+    long wifiSig = WiFi.RSSI();
+    String sigStr = String(wifiSig);
+    html.concat("WiFi signal: ");
+    html.concat(sigStr);
+    html.concat(" dBm<BR>");
+  }
   //build the html form based on the supplied field labels
   int strLen = _labels.length() + 1;
   char labelArr[strLen];
@@ -52,6 +57,7 @@ void WIFIConfigurator::sendConfigForm() {
   }
   html.concat("<INPUT TYPE='submit' VALUE='Submit'></FORM>");
 
+  char data[MAXDATASIZE];
   //load the current config values from EEPROM and set the form field values with html script
   EEPROM.begin(MAXDATASIZE);
   EEPROM.get(0, data);
@@ -84,24 +90,27 @@ void WIFIConfigurator::handleRoot() {
 void WIFIConfigurator::handleConfigChange() {
 
   Serial.println("handleConfigChange()");
+  char data[MAXDATASIZE];
   char newData[MAXDATASIZE];
-  memset(data,0,MAXDATASIZE);
   EEPROM.begin(MAXDATASIZE);
   EEPROM.get(0, data);
   strtok(data, "|");
   char* mypassword = strtok(NULL, "|"); //pword is second item on EEPROM
   strcpy(newData,"|");
-  for (int i=0; i < server.args() - 1; i++) { //ignore last arg which is the full querystring
-    String valStr = server.arg(i);
-    int strLen = valStr.length() + 1;
-    char val[strLen];
-    valStr.toCharArray(val,strLen);
-    if (i == 1 && strLen == 1) {
-      strcat(newData, mypassword); //if no wifi password entered, use existing one
-    } else {
-      strcat(newData, val);
+  for (int i=0; i < server.args(); i++) { //ignore last arg which is the full querystring
+    String argName = server.argName(i);
+    if (argName.startsWith("field")) {
+      String valStr = server.arg(i);
+      int strLen = valStr.length() + 1;
+      char val[strLen];
+      valStr.toCharArray(val,strLen);
+      if (i == 1 && strLen == 1) {
+        strcat(newData, mypassword); //if no wifi password entered, use existing one
+      } else {
+        strcat(newData, val);
+      }
+      strcat(newData, "|");
     }
-    strcat(newData, "|");
   }
   Serial.println("writing:");
   Serial.println(newData);
