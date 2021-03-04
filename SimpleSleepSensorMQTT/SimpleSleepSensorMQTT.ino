@@ -12,13 +12,14 @@ int mqttPort;
 char* mqttUser;
 char* mqttPassword;
 char* mqttTopic;
-unsigned int sleepSec;
+
+unsigned long sleepSec = 30;
 unsigned int delayBeforeSleepMs = 300000;
 unsigned long startTime;
 
-const int sensorPin = 4;  //D2
+const int sensorPin = 3;  //use RX for input pin
 
-char configData[500];
+char configData[300];
 const String configLabels = "MQTT Server Host|MQTT Port|MQTT User|MQTT Password|MQTT Topic|Sleep Duration (s)";
 bool powerCycled;
 
@@ -43,22 +44,22 @@ void publish(char* payload) {
 
 
 void setup() {
- 
- delay(3000);
+ delay(2000);
  Serial.begin(115200);
- 
- EEPROM.begin(500);
- EEPROM.get(0, configData);
- 
- Serial.println();
+  
  configurator.begin();
+
+ EEPROM.begin(300);
+ EEPROM.get(0, configData);
+
+ Serial.println("reading config from EEPROM...");
  while (true) {
    char* ssid = strtok(configData, "|");
    if (ssid == NULL) break;
    char* wifipassword = strtok(NULL, "|");
    if (wifipassword == NULL) break;
-   char* hostname = strtok(NULL, "|");
-   if (hostname == NULL) break;
+   char* myhostname = strtok(NULL, "|");
+   if (myhostname == NULL) break;
    mqttServer = strtok(NULL, "|");
    if (mqttServer == NULL) break;
    mqttPort = atoi(strtok(NULL, "|"));
@@ -71,11 +72,12 @@ void setup() {
    if (mqttTopic == NULL) break;
    sleepSec = atoi(strtok(NULL, "|"));
    if (sleepSec == NULL) break;
-   
+
    //Config looks good, report sensor readimg...
    pinMode(sensorPin, INPUT);
    delay(500);
    client.setServer(mqttServer, mqttPort);
+
    if (digitalRead(sensorPin) == HIGH) {
      Serial.println("sensor: ON");
      publish("ON");
@@ -87,12 +89,12 @@ void setup() {
    Serial.print("reset reason: ");
    Serial.println(ESP.getResetReason());
 
-   if (ESP.getResetReason().equals("Power on")) {
-     Serial.println("Restarted because of power cycle, starting in config mode.  You have 5 min to reconfigure via web");
+   if (ESP.getResetReason().equals("Power on") || ESP.getResetReason().equals("External System") ) {
+     Serial.println("External reset or power cycle, starting in config mode.  You have 5 min to reconfigure via web");
      delayBeforeSleepMs = 300000;
    } else {
-     Serial.println("Restarted because of reset from deep sleep, going back to sleep in 3 seconds");
-     delayBeforeSleepMs = 3000;
+     Serial.println("Started from scheduled deep sleep reset, going back to sleep in 2 seconds");
+     delayBeforeSleepMs = 2000;
    }
    startTime = millis();
    break;
@@ -104,9 +106,11 @@ void loop() {
   configurator.handleClient();
   unsigned long now = millis();
   if (now - startTime > delayBeforeSleepMs || now < startTime) {
+    unsigned long sleepMicroS = sleepSec * 1000000;
     Serial.print("sleeping for ");
-    Serial.print(sleepSec);
-    Serial.println(" seconds");    
-    ESP.deepSleep(sleepSec * 1000000);
+    Serial.print(sleepMicroS);
+    Serial.println(" micro sec");    
+    ESP.deepSleep(sleepMicroS);
+    delay(10);
   }
 } 
