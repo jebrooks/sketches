@@ -12,7 +12,7 @@ char* mqttPassword;
 char* mqttTopic;
 char* myhostname;
 
-const int stepsPerRev = 4096;
+const int stepsPerRev = 2048;
 int closePosition = 0;
 int desiredPosition = 0;
 int position = 0;
@@ -92,7 +92,7 @@ void setup() {
    
    client.setServer(mqttServer, mqttPort);
 
-   myStepper.setSpeed(8);
+   myStepper.setSpeed(15);
 
    break;
  }
@@ -107,16 +107,18 @@ void loop() {
   if (position < desiredPosition) {
     myStepper.step(100);
     position = position + 100;
-    if (position == desiredPosition) {
+    if (position >= desiredPosition) {
       turnOffMotor();
+      position = desiredPosition;
     }
   }
 
   if (position > desiredPosition) {
     myStepper.step(-100);
     position = position - 100;
-    if (position == desiredPosition) {
+    if (position <= desiredPosition) {
       turnOffMotor();
+      position = desiredPosition;
     }    
   }
 
