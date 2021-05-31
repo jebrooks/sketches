@@ -13,12 +13,14 @@ char* mqttTopic;
 char* myhostname;
 
 const int stepsPerRev = 2048;
+const int rpm = 25;
 int closePosition = 0;
+int openPosition = 0;
 int desiredPosition = 0;
 int position = 0;
 
 char configData[300];
-const String configLabels = "MQTT Server Host|MQTT Port|MQTT User|MQTT Password|MQTT Topic|Close Position";
+const String configLabels = "MQTT Server Host|MQTT Port|MQTT User|MQTT Password|MQTT Topic|Open Position|Close Position|Current Position";
 
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
@@ -43,11 +45,10 @@ void handleCommand(char* topic, byte* payload, unsigned int length) {
   if (!strncmp((char *)payload, "CLOSE", length)) {
     close();
   }
-  
 }
 
 void open() {
-  desiredPosition = 0;
+  desiredPosition = openPosition;
 }
 
 void close() {
@@ -82,18 +83,22 @@ void setup() {
    if (mqttPassword == NULL) break;
    mqttTopic = strtok(NULL, "|");
    if (mqttTopic == NULL) break;
+   openPosition = atoi(strtok(NULL, "|"));
    closePosition = atoi(strtok(NULL, "|"));
-   if (closePosition == NULL) break;
+   position = atoi(strtok(NULL, "|"));
+   desiredPosition = position;
 
    Serial.print("subscribing to: ");
    Serial.println(mqttTopic);
    Serial.print("closePosition: ");
    Serial.println(closePosition);
-   
+   Serial.print("openPosition: ");
+   Serial.println(openPosition);
+
    client.setServer(mqttServer, mqttPort);
 
-   myStepper.setSpeed(15);
-
+   myStepper.setSpeed(rpm);
+ 
    break;
  }
   
@@ -110,6 +115,7 @@ void loop() {
     if (position >= desiredPosition) {
       turnOffMotor();
       position = desiredPosition;
+      savePosition();
     }
   }
 
@@ -119,6 +125,7 @@ void loop() {
     if (position <= desiredPosition) {
       turnOffMotor();
       position = desiredPosition;
+      savePosition();      
     }    
   }
 
@@ -132,15 +139,42 @@ void turnOffMotor() {
 }
 
 void connectMQTT() {
-  if (!client.connected()) {
-    Serial.println("Connecting to MQTT...");
-    if (client.connect(myhostname, mqttUser, mqttPassword )) {
-      Serial.println("connected to MQTT server");
-    } else {
-      Serial.print("failed with state ");
-      Serial.println(client.state());
-    }
+  if (!client.connected() && client.connect(myhostname, mqttUser, mqttPassword )) {
+    Serial.println("connected to MQTT server");
     client.subscribe(mqttTopic);   
     client.setCallback(handleCommand); 
   }
+}
+
+void savePosition() {
+
+  //currentPosition is the last element stored in EEPROM, find it and overwrite
+  char data[300];
+  EEPROM.begin(300);
+  EEPROM.get(0, data);
+  int lastPipePos = 0;
+  for (int i=0; i < 300; i++) {
+     if (data[i] == '|') {
+        lastPipePos = i;
+     }
+  }
+  String posStr = String(position);
+  Serial.println(posStr);
+  int strLen = posStr.length() + 1;
+  char posArr[strLen];
+  posStr.toCharArray(posArr,strLen);
+
+  Serial.println(posArr);
+  for (int i=0; i < 300 - lastPipePos; i++) {
+    if (i < strLen) {
+      data[lastPipePos + i + 1] = posArr[i];
+    } else {
+      data[lastPipePos + i + 1] = 0;
+    }
+  }
+
+  Serial.println(data);
+  
+  EEPROM.put(0,data);
+  EEPROM.commit();
 }
